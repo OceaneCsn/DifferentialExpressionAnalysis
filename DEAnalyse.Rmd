@@ -1,0 +1,207 @@
+---
+title: "DE Analyse Nitrates"
+author: "Océane"
+date: "10/23/2019"
+output: 
+  rmdformats::material:
+    highlight: kate
+    includes:
+        after_body: footer.html
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr, warn.conflicts = F, quietly = T)
+library(rmdformats, warn.conflicts = F, quietly = T)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+
+setwd("~/Documents/RNADifferentialAnalysis/DifferentialExpressionAnalysis")
+
+suppressMessages(library(DESeq, warn.conflicts = F, quietly = T))
+suppressMessages(library(DESeq2, warn.conflicts = F, quietly = T))
+suppressMessages(library(dplyr, warn.conflicts = F, quietly = T))
+suppressMessages(library(biomartr, warn.conflicts = F, quietly = T))
+suppressMessages(library(biomaRt, warn.conflicts = F, quietly = T))
+library(ggplot2, warn.conflicts = F, quietly = T)
+```
+
+# Préparation du jeu de données
+
+On loade la matrice de reads par échantillon et par gènes obtenue par htseq-count.
+On supprime les dernières lignes qui correspondent aux reads non identifiés comme des gènes ou comme ambigus.
+
+```{r data}
+data = read.table("quantif_all.txt", h=T)
+rownames(data)=data$Gene
+data = dplyr::select(data, -c("Gene"))
+genes = which(!(grepl("__", rownames(data))))
+data = data[genes,]
+data = data[, sort(colnames(data))]
+kable(head(data))
+```
+
+On rensigne le design et le type d'échantillons.
+
+```{r design}
+design = data.frame(
+   row.names = colnames( data ),
+   condition = c( "untreated", "untreated", "untreated",
+      "treated", "treated", "treated"),
+   libType = rep("single-end", 6))
+kable(design)
+
+cds = newCountDataSet(data, design$condition)
+```
+
+# Normalisation
+
+D'après les 2 papiers de review lus (et détails techniques sur https://hbctraining.github.io/DGE_workshop/lessons/02_DGE_count_normalization.html) : 
+
+
+- **RPKM non adaptés pour la DE** : Permettent la comparaison entre gènes d'un même échantillon en corrigeant la profondeur de séquençage et la taille des gènes, mais ne permet pas de comparer des échantillons différents. (La somme des counts normalisés en RPKM ne sera pas la même pour deux échantillons). De plus, on compare des gènes identiques uniquement, donc la taille n'est pas importante.
+
+
+- **DESeq : la médiane de ratios** : On calcule un sizeFactor propre à chaque échantillon pour corriger la profondeur de séquençage. On divise chaque count par la moyenne géométrique des counts de son gène parmis tous les échantillons (Comme si on créait un nouvel échantillon de pseudo-référence. Les ratios dans un même échantillon devraient être similaires entre la plupart des gènes, qui sont en majorité non differentiellement exprimés). Le size factor d'un échantillon est la médiane de ces ratios pour tous les gènes. Pour normaliser, on divise tous les counts d'un échantillon par son sizeFactor. (On ne considère pas dans la médiane les gènes ayant une moyenne géométrique de 0)
+
+
+- **TMM** : 
+
+à voir avec EdgeR.
+
+
+```{r norm, cache = T}
+
+cds = estimateSizeFactors(cds)
+
+keep <- rowSums(counts(cds)) >= 10
+cds <- cds[keep,]
+
+sizeFactors(cds)
+par(mfrow = c(1,2))
+heatmap(counts(cds)[sample(rownames(counts(cds, normalized = FALSE)), 500),], main = "Sans normalisation")
+heatmap(counts(cds, normalized=TRUE)[sample(rownames(counts(cds, normalized = TRUE)), 500),], main = "Avec normalisation")
+```
+
+# Estimation de la variance
+
+The variance seen between counts is the sum of two components:  the sample-to-sample variation just mentioned, and the uncertaintyin measuring a concentration by counting reads.  The latter, known as shot noise or Poisson noise, is the dominatingnoise source for lowly expressed genes.  The former dominates for highly expressed genes.  The sum of both, shot noiseand dispersion, is considered in the differential expression inference.Hence, the variancevof count values is modelled as $v = s\mu + \alpha s^2\mu^2$,
+
+where $\mu$ is the expected normalized count value (estimated by the average normalized count value),$s$ is the size factor for the sample under consideration, and $\alpha$ is the dispersion value for the gene under consideration.
+```{r var}
+cds = estimateDispersions(cds)
+DESeq::plotDispEsts(cds)
+```
+# Analyse d'expression différentielle
+
+On continue maintenant avec DESeq2, qui utilise le même test statistique que DESeq mais avec des améliorations pour les estimations et le GLM. Test : maintenant que les variances ont été estimées, il devient facile de comparer les conditions avec un test, rbinom.
+
+A decrire mieux et parler des modèles, tout ça tout ça.
+
+On construit le dataset, puis on enlève les lignes dont la somme des reads ne dépasse pas 10.
+
+```{r deseq2}
+dds <- DESeq2::DESeqDataSetFromMatrix(countData = data,
+                              colData = design,
+                              design = ~ condition)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds$condition <- relevel(dds$condition, ref = "untreated")
+
+dds <- DESeq2::DESeq(dds)
+res <- results(dds)
+
+resLFC <- lfcShrink(dds, coef="condition_treated_vs_untreated", type="apeglm")
+
+resOrdered <- res[order(res$padj),]
+sum(res$padj < 0.05, na.rm=TRUE)
+DESeq2::plotMA(res, ylim=c(-5,5))
+DESeq2::plotMA(resLFC)
+```
+On a peu de gènes DE, seulement 48 avec un seuil à 5% de p-value, et 60 à 10%.
+
+Visu du gènes le plus différentiellement exprimé : 
+
+```{r plot_more}
+
+d <- plotCounts(dds, gene=which.min(res$padj), intgroup="condition", 
+                returnData=TRUE)
+
+ggplot(d, aes(x=condition, y=count)) + 
+  geom_point(position=position_jitter(w=0.1,h=0)) + 
+  scale_y_log10(breaks=c(25,100,400))
+```
+
+On essaie de voir ce qui pourrait être étrange dans les données pour avoir si peu de gènes : 
+
+```{r hists}
+hist(res$padj, breaks = 20)
+hist(res$pvalue, breaks = 20)
+hist(res$log2FoldChange, breaks = 20)
+sum(res$log2FoldChange > 1, na.rm=TRUE)
+```
+
+En prenant une condition sur le log2FoldChange on a beaucoup plus de gènes DE.
+Affichage en heatmap des gènes les plus différentiellement exprimés.
+
+```{r heatmaps}
+par(mfrow = c(1,2))
+thr = 0.1
+res = na.omit(res)
+DEgenes = rownames(res[abs(res$log2FoldChange) > 1,])
+mat = counts(dds, normalized=TRUE)[DEgenes,]
+heatmap(mat, main = "abs(Log2FoldChange) > 1 ")
+DEgenes = rownames(res[res$padj < thr,])
+mat = counts(dds, normalized=TRUE)[DEgenes,]
+heatmap(mat, main = "Significatifs")
+
+DEgenes_pval = rownames(res[res$padj < thr,])
+DEgenes_upreg = rownames(res[res$log2FoldChange > 1,])
+DEgenes = intersect(DEgenes_pval, DEgenes_upreg)
+mat = counts(dds, normalized=TRUE)[DEgenes,]
+heatmap(mat, main = "Juste les significatifs uprégulés")
+```
+
+On s'intéresse maintenant à la liste de gènes sélectionnés et à leur ontologie.
+
+```{r mart}
+mart = useMart(biomart="plants_mart",host="plants.ensembl.org", dataset = "athaliana_eg_gene")
+results <- getBM( filters = "ensembl_transcript_id", attributes = c("ensembl_transcript_id", "description", "external_gene_name"),
+           values = DEgenes, mart = mart)
+rownames(results) = results$ensembl_transcript_id
+r = results[DEgenes,]; kable(r, caption = "Genes DE et leur GO")
+```
+
+AT2G15620.1 est bien impliqué dans la réponse aux nitrates. (Involved in the second step of nitrate assimilation. Its expression is induced by nitrate)
+
+AT1G35560.1	regulation of timing of transition from vegetative to reproductive phase
+
+AT1G64190.1	D-gluconate catabolic process
+
+AT2G36570.1 ATP binding, kinase activity, protein kinase activity
+
+Genes trouvés en commun avec la publi : 
+
+NIR : endogenous NIR gene as a primary nitrate-responsive marker gene
+
+NRT2.1 : Transporteur
+
+NIA1 et NIA2 : Nitrate reductases
+
+TPPB : Trehalose-phosphate phosphatase B 
+
+NLP3 : protein
+
+PGD1 : 6-phosphogluconate dehydrogenase
+
+G6PD2 : Glucose-6-phosphate 1-dehydrogenase 2
+
+HHO...
+

@@ -1,0 +1,99 @@
+---
+title: "Méthodes statistiques pour l'analyse d'expression différentielle RNA-Seq"
+date: "`r Sys.Date()`"
+author: "Océane Cassan"
+output:
+  rmdformats::material:
+    highlight: kate
+    includes:
+        after_body: footer.html
+---
+
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr)
+library(rmdformats)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(echo=FALSE,
+	             cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+```
+
+
+
+Il est d'abord nécessaire de filtrer les gènes dont l'expression sommée sur toutes les conditions ne dépasse pas une certaine valeur (environ 10) pour ne pas fausser les tests statistiques, et car ils ne représentent pas de réel intêret biologique.
+
+# Normalisation des données
+
+On distingue plusieur types de normalisation.
+
+- **Normalisation inter-sample** : La profondeur de séquençage varie d'un échantillon à l'autre. Il est nécessaire de normaliser en calculant un facteur propre à chaque échantillon, qui sera utilisé comme facteur correctif pour les reads dans toute la suite de l'analyse.
+
+- **Normalisation intra-sample** : Corrige suivant la longueur des gènes, suivant le GC-content... Cela est utile dans une optique de comparaison entre différents gènes, dans un même échantillon. Pour l'expression différentielle, comme on compare un même gène entre différentes conditions, les effets intra-sample n'ont pas ou très peu d'effets. Ex : RPKM, La somme des counts normalisés en RPKM ne sera pas la même pour deux échantillons, les rendant non comparables.
+
+
+Plus de détails : https://hbctraining.github.io/DGE_workshop/lessons/02_DGE_count_normalization.html) 
+
+Les deux méthodes présentées reposent sur le fait que les gènes sont en majorité non differentiellement exprimés. On calcule un sizeFactor propre à chaque échantillon.
+
+
+## Méthode de DESeq2 : la médiane des ratios
+
+On veit ici corriger la profondeur de séquençage. On divise chaque count par la moyenne géométrique des counts de son gène parmis tous les échantillons (Comme si on créait un nouvel échantillon de pseudo-référence avec cette moyenne. **Le size factor d'un échantillon est la médiane de ces ratios pour tous les gènes**. Pour normaliser, on divise tous les counts d'un échantillon par son sizeFactor. (On ne considère pas dans la médiane les gènes ayant une moyenne géométrique de 0).
+
+Si $i$ représente un gène et $j$ un échantillon :
+
+$sizeFactor_J = \mathrm{mediane}(\frac{read_{i,J}}{\big(\Pi_{j = 1}^{N_{samples}}read_{i,j}\big)^{1/N_{samples} }})$ 
+
+## Méthode de edgeR : TMM (trimmed mean of M values)
+
+Le principe est de minimiser le logFoldChange entre les échantillons, en supposant qu'ils sont majoritairement non DE. La modélisation du nombre de reads est : 
+
+$E(reads_{i,j}) = \frac{\mu_{i,j}L_i}{S_j}N_j$, avec $S_j = \Sigma_{j=1}^J\mu_{i,j}L_j$ la somme totale d'ARN, $L_i$ la taille du gène $i$, et $N_j$ la somme d'ARN pour l'échantillon $j$.
+
+Un gene-wise fold-change est calculé comme suit : $M_i = \mathrm{log}_2 (\frac{reads_{i,j}/N_j}{reads_{i,j'}/N_{j'}})$
+
+On défini également une expression absolue utilisée pour rafiner le trimming.
+On calcule le TMM de $j$ avec comme $j'$ tous les autre échantillons.
+
+Cette expression et les valeurs M sont trimmed (on enlève x% lower and upper), ce qui élimine des gènes jugés "outliers" (30\% pour M, et 5\% pour l'expression). On prend ensuite une moyenne des $M_i$ restants, pondérée par les coefficients de précision de chaque gène (inverse de la variance, calculée avec la méthode du delta).
+
+On élimine en amont les gènes avec des counts nuls.
+
+# Expression différentielle
+
+La loi de **Poisson** est utilisée pour modéliser des données de comptage.
+Cependant, la variance biologique induite par les différents réplicats provoque une surdispersion de ce modèle de Poisson. Une loi **négative binomiale** est donc utilisée.
+
+## Estimer la variance
+
+On modélise les données comme suit : $reads_{i,j} \sim  NB(N_jp_i = \mu_{i,j}, \phi_i)$ avec $N_j$ la taille de l'échantillon $j$, $p_i$ la vraie proportion de reads issus du gène $i$, et $\phi_i$ la dispersion. Si $\phi_i = 0$ on retrouve une loi de Poisson.
+Suivant la formule des variances de mixture distributions, la variance du modèle est $var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2$. En divisant par $\mu_{i,j}^2)$ on obtient $CV^2(reads_{i,j}) = 1/\mu_{i,j}+\phi_i = $ technical $CV^2 + $ biological $CV^2$. Avec CV le coefficient de variation, mesure de la variabilité relative (ratio sd moyenne). Le CV technique diminue avec l'augmentation du nombre de reads, tandis que le CV biologique reste constant. C'est ce paramètre biologique $\phi_i$ qui est à estimer avant de pouvoir tester statistiquement l'expression différentielle pour un gène.
+
+On peut utiliser l'ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d'expression pour un gène. Pour cela, on peu considérer qu'ils ont tous un ratio moyenne-variance similaire. C'est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. C'est pour cela qu'on utilise en fait une loi quasi négative binomiale, dont la variance s'écrit $var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)$.
+
+Explication assez claire pour edge R: https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
+
+
+On estime les variances par maximum de vraissemblance, conditionnellement au nombre total de reads par gène.
+Une méthode Bayésienne empririque est utilisée pour converger vers une valeur de dispersion.
+On fitte une tendance dépendante de la moyenne aux estimées de QL.
+
+## Test d'expression différentielle
+
+L'hypothèse nulle est que la proportion des transcrits $i$ est a même dans les deux conditions, $p_{i,A} = p_{i,B}$.
+On ajuste par rapport aux quantiles pour pouvoir avoir un test exact (test permettant de conclure à la significativité tout en fixant l'erreur de première espèce)
+
+
+Test exact analogue au test exact de Fischer, adapté aux données surdispersées.
+On modélise la somme des NB des deux conditions, qui suit aussi une NB. On calcule ensuite la probabilité d'avoir cette somme sous l'hypothèse nulle, c'est à dire l'égalité des proportions.
+
+### EdgeR : 
+
