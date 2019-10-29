@@ -64,10 +64,8 @@ The calcNormFactorsfunction normalizes for RNA composition by finding a set of s
 ```{r norm}
 y <- calcNormFactors(y)
 y$samples
-
 norm <- cpm(y, normalized.lib.sizes=TRUE)
 not_norm <- cpm(y, normalized.lib.sizes=FALSE)
-
 rd_genes = sample(rownames(norm), 500)
 heatmap(not_norm[rd_genes,], main = "Sans normalisation")
 heatmap(norm[rd_genes,], main = "Avec normalisation")
@@ -96,8 +94,11 @@ best = best[best$table$FDR < 0.05,]
 DEgenes = rownames(best$table)
 plotBCV(y)
 
+
+
 plotMD(et)
 abline(h=c(-1, 1), col="blue")
+abline(h=c(0), col="red")
 summary(decideTests(et))
 ```
 
@@ -119,8 +120,14 @@ mart = useMart(biomart="plants_mart",host="plants.ensembl.org", dataset = "athal
 results <- getBM( filters = "ensembl_transcript_id", attributes = c("ensembl_transcript_id", "description", "external_gene_name"),
            values = DEgenes, mart = mart)
 rownames(results) = results$ensembl_transcript_id
-r = results[DEgenes,]; kable(r, caption = "Genes DE et leur GO")
+r = results[DEgenes,]
+r$pval = best$table$PValue
+kable(r, caption = "Genes DE et leur GO")
 
+
+library(stringi)
+DEGenesNames = stri_remove_empty(r$external_gene_name, na_empty = FALSE)
+save(file = "DEGenesEdgeRAll.RData", DEGenesNames)
 ```
 
 

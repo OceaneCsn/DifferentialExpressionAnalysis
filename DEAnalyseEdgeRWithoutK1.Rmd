@@ -1,0 +1,129 @@
+---
+title: "DE Analyse EdgeR Sans K1"
+author: "Océane Cassan"
+date: "10/25/2019"
+output: 
+  rmdformats::material:
+    highlight: kate
+    includes:
+        after_body: footer.html
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr, warn.conflicts = F, quietly = T)
+library(rmdformats, warn.conflicts = F, quietly = T)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+
+setwd("~/Documents/RNADifferentialAnalysis/DifferentialExpressionAnalysis")
+suppressMessages(library(edgeR))
+suppressMessages(library(dplyr))
+suppressMessages(library(biomartr))
+suppressMessages(library(biomaRt))
+```
+
+# Préparation du jeu de données
+
+On loade la matrice de reads par échantillon et par gènes obtenue par htseq-count.
+On supprime les dernières lignes qui correspondent aux reads non identifiés comme des gènes ou comme ambigus.
+
+```{r data}
+data = read.table("quantif_all.txt", h=T)
+rownames(data)=data$Gene
+data = dplyr::select(data, -c("Gene", "WT.K1"))
+genes = which(!(grepl("__", rownames(data))))
+data = data[genes,]
+data = data[, sort(colnames(data))]
+kable(head(data))
+```
+
+
+# Normalisation
+
+In the biological point of view, a gene must be expressed at some minimal level before it is likelyto be translated into a protein or to be biologically important. In addition, the pronounceddiscreteness of these counts interferes with some of the statistical approximations that areused later in the pipeline. These genes should be filtered out prior to further analysis.As a rule of thumb, genes are dropped if they can’t possibly be expressed in all the samplesfor any of the conditions. On met aussi bien à jour la nouvelle taille de librairie.
+
+```{r filter}
+y <- DGEList(counts=data, group = c(1,1,2,2,2))
+y$samples
+keep <- filterByExpr(y)
+y <- y[keep, , keep.lib.sizes=FALSE]
+```
+
+RNA-seq provides a measure of the relative abundance of each gene in each RNAsample, but does not provide any measure of the total RNA output on a per-cell basis. This commonly becomes important when a small number of genes are very highly expressed in one sample, but not in another. The highly expressed genes can consume a substantial proportionof the total library size, causing the remaining genes to be under-sampled in that sample.
+
+The calcNormFactorsfunction normalizes for RNA composition by finding a set of scalingfactors for the library sizes that minimize the log-fold changes between the samples for mostgenes. The default method for computing these scale factors uses a trimmed mean of M-values (TMM) between each pair of samples [30]. We call the product of the original library size and the scaling factor the effective library size. The effective library size replaces theoriginal library size in all downsteam analyses. TMM is recommended for most RNA-Seq data where the majority (more than half) of thegenes are believed not differentially expressed between any pair of the sample
+
+```{r norm}
+y <- calcNormFactors(y)
+y$samples
+
+norm <- cpm(y, normalized.lib.sizes=TRUE)
+not_norm <- cpm(y, normalized.lib.sizes=FALSE)
+
+rd_genes = sample(rownames(norm), 500)
+heatmap(not_norm[rd_genes,], main = "Sans normalisation")
+heatmap(norm[rd_genes,], main = "Avec normalisation")
+```
+
+
+The normalization factors of all the libraries multiply to unity. A normalization factor belowone indicates that a small number of high count genes are monopolizing the sequencing,causing the counts for other genes to be lower than would be usual given the library size. Asa result, the library size will be scaled down, analogous to scaling the counts upwards in thatlibrary. Conversely, a factor above one scales up the library size, analogous to downscalingthe counts.
+
+The GC-content of each gene does not change from sample to sample, so it can be expectedto have little effect on differential expression analyses to a first approximation. Recent pub-lications, however, have demonstrated that sample-specific effects for GC-content can bedetected [28, 13]. The EDASeq [28] and cqn [13] packages estimate correction factors thatadjust for sample-specific GC-content effects in a way that is compatible with edgeR.
+
+Like GC-content, gene length does not change from sample to sample, so it can be expectedto have little effect on differential expression analyses. Nevertheless, sample-specific effectsfor gene length have been detected [13], although the evidence is not as strong as for GC-content.
+
+# Estimation de la variance et Expression différentielle
+
+Biological Variance is the coefficient of variation with which the (unknown) true abundanceof the gene varies between replicate RNA samples.
+
+The dispersion estimates can be viewed in a BCV plot:
+
+
+Estimation compliquée à documenter
+```{r fit}
+y <- estimateDisp(y)
+et <- exactTest(y)
+best = topTags(et, n = 2000)
+best = best[best$table$FDR < 0.05,]
+DEgenes = rownames(best$table)
+plotBCV(y)
+
+plotMD(et)
+abline(h=c(-1, 1), col="blue")
+abline(h=c(0), col="red")
+summary(decideTests(et))
+```
+
+On a plus de 200 gènes différentiellement exprimés avec un seuil pour la pvalue ajustée de 5%. 
+
+The functionplotMDS draws a multi-dimensional scaling plot of the RNA samples in whichdistances correspond to leading log-fold-changes between each pair of RNA samples. Theleading log-fold-change is the average (root-mean-square) of the largest absolute log-fold-changes between each pair of sample
+
+```{r heatmap}
+plotMDS(y, top = 100)
+logcpm <- cpm(y, log=TRUE)
+heatmap(logcpm[DEgenes,])
+```
+
+On peut maintenant chercher à voir les ontologies des gènes sélectionnés :
+```{r ont}
+library(knitr)
+mart = useMart(biomart="plants_mart",host="plants.ensembl.org", dataset = "athaliana_eg_gene")
+results <- getBM( filters = "ensembl_transcript_id", attributes = c("ensembl_transcript_id", "description", "external_gene_name"),
+           values = DEgenes, mart = mart)
+rownames(results) = results$ensembl_transcript_id
+r = results[DEgenes,]; kable(r, caption = "Genes DE et leur GO")
+
+library(stringi)
+DEGenesNames = stri_remove_empty(r$external_gene_name, na_empty = FALSE)
+save(file = "DEGenesEdgeRWithoutK1.RData", DEGenesNames)
+```
+
+

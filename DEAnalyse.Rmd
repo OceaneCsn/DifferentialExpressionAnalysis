@@ -153,7 +153,7 @@ Affichage en heatmap des gènes les plus différentiellement exprimés.
 
 ```{r heatmaps}
 par(mfrow = c(1,2))
-thr = 0.1
+thr = 0.05
 res = na.omit(res)
 DEgenes = rownames(res[abs(res$log2FoldChange) > 1,])
 mat = counts(dds, normalized=TRUE)[DEgenes,]
@@ -169,6 +169,11 @@ mat = counts(dds, normalized=TRUE)[DEgenes,]
 heatmap(mat, main = "Juste les significatifs uprégulés")
 ```
 
+```{r DEGenes}
+thr = 0.05
+res = na.omit(res)
+DEgenes = rownames(res[res$padj < thr,])
+```
 On s'intéresse maintenant à la liste de gènes sélectionnés et à leur ontologie.
 
 ```{r mart}
@@ -177,31 +182,11 @@ results <- getBM( filters = "ensembl_transcript_id", attributes = c("ensembl_tra
            values = DEgenes, mart = mart)
 rownames(results) = results$ensembl_transcript_id
 r = results[DEgenes,]; kable(r, caption = "Genes DE et leur GO")
+
+library(stringi)
+DEGenesNames = stri_remove_empty(r$external_gene_name, na_empty = FALSE)
+save(file = "DEGenesDESeqAll.RData", DEGenesNames)
 ```
 
-AT2G15620.1 est bien impliqué dans la réponse aux nitrates. (Involved in the second step of nitrate assimilation. Its expression is induced by nitrate)
 
-AT1G35560.1	regulation of timing of transition from vegetative to reproductive phase
-
-AT1G64190.1	D-gluconate catabolic process
-
-AT2G36570.1 ATP binding, kinase activity, protein kinase activity
-
-Genes trouvés en commun avec la publi : 
-
-NIR : endogenous NIR gene as a primary nitrate-responsive marker gene
-
-NRT2.1 : Transporteur
-
-NIA1 et NIA2 : Nitrate reductases
-
-TPPB : Trehalose-phosphate phosphatase B 
-
-NLP3 : protein
-
-PGD1 : 6-phosphogluconate dehydrogenase
-
-G6PD2 : Glucose-6-phosphate 1-dehydrogenase 2
-
-HHO...
 

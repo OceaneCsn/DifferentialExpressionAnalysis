@@ -1,0 +1,130 @@
+---
+title: "Comparaison de l'analyse d'expression différentielle avec le retrait ou non d'un réplicat étrange"
+author: "Océane Cassan"
+date: "10/25/2019"
+output: 
+  rmdformats::material:
+    highlight: kate
+    includes:
+        after_body: footer.html
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr, warn.conflicts = F, quietly = T)
+library(rmdformats, warn.conflicts = F, quietly = T)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(cache=TRUE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+setwd("~/Documents/RNADifferentialAnalysis/DifferentialExpressionAnalysis")
+suppressMessages(library(edgeR))
+
+library(ggplot2)
+library(ggVennDiagram)
+```
+
+
+Le réplicat WT.K1 est différent des autres : il présente une forte hétérogénéité, avec soit de très forts ou très faibles counts suivant les gènes. Après normalisation, il semble toujours se démarquer des autres et fausser l'analyse d'expression différentielle. 
+
+Ce document résume les différences entre les design avec ou sans ce réplicat, et les résultats obtenus avec DESeq2 et EdgeR.
+
+# Aspect du réplicat moche
+
+
+
+```{r rep}
+load("y_all.RData")
+yAll = y
+load("y_minK1.RData")
+yMinK1 = y
+
+
+normAll <- cpm(yAll, normalized.lib.sizes=TRUE)
+normMinK1 <- cpm(yMinK1, normalized.lib.sizes=TRUE)
+not_norm <- cpm(yAll, normalized.lib.sizes=FALSE)
+rd_genes = sample(rownames(normAll), 500)
+heatmap(not_norm[rd_genes,], main = "cpm Sans normalisation")
+heatmap(normAll[rd_genes,], main = "cpm Avec normalisation")
+heatmap(normMinK1[rd_genes,], main = "cpm Avec normalisation sans K1")
+```
+ On voit que la matrice normalisée est beaucoup plus homogène sans K1. Même conclusions avec la méthode de normalisation de DESeq2 non montrée ici.
+
+On peut aussi plotter les reads par gène d'une condition contre un autre.
+
+```{r rep}
+plot(x = log(normAll[,"WT.K2"]), y = log(normAll[,"WT.K3"]))
+plot(x = log(normAll[,"WT.K2"]), y = log(normAll[,"WT.K1"]))
+abline(c())
+```
+
+# Comparaison des log Fold Change
+
+Ici, avec EdgeR, on va comparer les logFoldChange entre les deux designs.
+Avec K1, le log fold change n'est pas centré en 0, probablement car le nombre de counts de K1 est plus fort que les autres, et tire le ratio de manière systématique vers une valeur inférieure à 1.
+
+
+```{r lfc}
+load("et_all.RData")
+etAll = et
+load("et_minK1.RData")
+etMinK1 = et
+
+
+plotMD(etAll)
+abline(h=c(-1, 1), col="blue")
+abline(h=c(0), col="red")
+summary(decideTests(etAll))
+
+plotMD(etMinK1)
+abline(h=c(-1, 1), col="blue")
+abline(h=c(0), col="red")
+summary(decideTests(etMinK1))
+```
+
+# Comparaison des gènes détectés
+
+```{r loading}
+load("DEGenesEdgeRAll.RData")
+EdgeAll = DEGenesNames
+load("DEGenesEdgeRWithoutK1.RData")
+EdgeminK1 = DEGenesNames
+load("DEGenesDESeqAll.RData")
+deseqAll = DEGenesNames
+load("DEGenesDESeqWithoutK1.RData")
+deseqminK1 = DEGenesNames
+```
+
+On détecté déjà beaucoup plus de gènes avec EdgeR, différences dues à leur méthode de normalisation et probablement à leur estimation de la variance et tests de significativité.
+
+```{r barplot}
+
+df <- data.frame(matrix(ncol = 2, nrow = 4))
+x <- c("Design", "GeneNumber")
+colnames(df) <- x
+
+df$Design <- c("DESeq", "DESeqMinK1", "EdgeR", "EdgeRMinK1")
+df$GeneNumber <- c(length(deseqAll), length(deseqminK1), length(EdgeAll), length(EdgeminK1))
+
+
+ggplot(data=df, aes(x=Design, y=GeneNumber)) +
+  geom_bar(stat="identity", fill="steelblue") +
+  ggtitle("Nombre de gènes différentiellement exprimés suivant le design et le package R")+
+  geom_text(aes(label=GeneNumber), vjust=1.6, color="white", size=3.5)+
+  theme_minimal() 
+```
+
+Les tests permettent de détecter plus de gènes lorsque le réplicat douteux est retiré de l'étude.
+
+```{r venn}
+
+x <- list(A=deseqAll,B=deseqminK1,C=EdgeAll,D=EdgeminK1)
+ggVennDiagram(x,category.names = c("DESeq", "DESeqMinK1", "EdgeR", "EdgeRMinK1") )
+Reduce(intersect, list(deseqAll,deseqminK1,EdgeAll,EdgeminK1))
+```
+

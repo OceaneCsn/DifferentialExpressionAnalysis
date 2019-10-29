@@ -75,9 +75,16 @@ Cependant, la variance biologique induite par les différents réplicats provoqu
 ## Estimer la variance
 
 On modélise les données comme suit : $reads_{i,j} \sim  NB(N_jp_i = \mu_{i,j}, \phi_i)$ avec $N_j$ la taille de l'échantillon $j$, $p_i$ la vraie proportion de reads issus du gène $i$, et $\phi_i$ la dispersion. Si $\phi_i = 0$ on retrouve une loi de Poisson.
-Suivant la formule des variances de mixture distributions, la variance du modèle est $var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2$. En divisant par $\mu_{i,j}^2)$ on obtient $CV^2(reads_{i,j}) = 1/\mu_{i,j}+\phi_i = $ technical $CV^2 + $ biological $CV^2$. Avec CV le coefficient de variation, mesure de la variabilité relative (ratio sd moyenne). Le CV technique diminue avec l'augmentation du nombre de reads, tandis que le CV biologique reste constant. C'est ce paramètre biologique $\phi_i$ qui est à estimer avant de pouvoir tester statistiquement l'expression différentielle pour un gène.
 
-On peut utiliser l'ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d'expression pour un gène. Pour cela, on peu considérer qu'ils ont tous un ratio moyenne-variance similaire. C'est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. C'est pour cela qu'on utilise en fait une loi quasi négative binomiale, dont la variance s'écrit $var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)$.
+
+Suivant la formule des variances de mixture distributions, la variance du modèle est $var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2$. Elle est composée du "shot noise" et de la variance brute. En divisant par $\mu_{i,j}^2$ on obtient $CV^2(reads_{i,j}) = \frac{1}{\mu_{i,j}}+\phi_i =  technical CV^2 +  biological CV^2$. 
+
+Avec CV le coefficient de variation, mesure de la variabilité relative (ratio sd moyenne). Le CV technique diminue avec l'augmentation du nombre de reads, tandis que le CV biologique reste constant. C'est ce paramètre biologique $\phi_i$ qui est à estimer avant de pouvoir tester statistiquement l'expression différentielle pour un gène.
+
+
+On peut utiliser l'ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d'expression pour un gène. Pour cela, on peu considérer qu'ils ont tous un ratio moyenne-variance similaire. C'est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. Une fonction de la moyenne d'expression est donc utilisée pour estimer la variance, ce qui permet de pooler tous les gènes d'expression similaire et de pallier au manque de valeurs.
+
+C'est pour cela qu'on utilise en fait une loi quasi négative binomiale, dont la variance s'écrit $var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)$.
 
 Explication assez claire pour edge R: https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
 
@@ -89,11 +96,11 @@ On fitte une tendance dépendante de la moyenne aux estimées de QL.
 ## Test d'expression différentielle
 
 L'hypothèse nulle est que la proportion des transcrits $i$ est a même dans les deux conditions, $p_{i,A} = p_{i,B}$.
-On ajuste par rapport aux quantiles pour pouvoir avoir un test exact (test permettant de conclure à la significativité tout en fixant l'erreur de première espèce)
+On crée un test exact (test permettant de conclure à la significativité tout en fixant l'erreur de première espèce)
+
+la statistique de test est la somme des counts pour les deux conditions : $K_{iA} + K_{iB} = \Sigma_{j \in A} reads_{i,j} + \Sigma_{j \in B} reads_{i,j}$. A partir du modèle d'erreur, on peut calculer la probabiliter d'obtenir l'énènement $K_{iA} = a$ et $K_{iB} = b$, $p(a,b)$.
 
 
 Test exact analogue au test exact de Fischer, adapté aux données surdispersées.
 On modélise la somme des NB des deux conditions, qui suit aussi une NB. On calcule ensuite la probabilité d'avoir cette somme sous l'hypothèse nulle, c'est à dire l'égalité des proportions.
-
-### EdgeR : 
 
