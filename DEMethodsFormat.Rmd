@@ -93,8 +93,16 @@ On estime les variances par maximum de vraissemblance, conditionnellement au nom
 Une méthode Bayésienne empririque est utilisée pour converger vers une valeur de dispersion.
 On fitte une tendance dépendante de la moyenne aux estimées de QL.
 
+
+### DESeq2 : 
+
+Inférence bayesienne, avec un prior sur $\phi_i$ log normal centré autour d'une fonction à priori de l'expression moyenne du gène. 
+Méthode bayesiennes empiriques par maximum de likelihood pour estimer $\phi_i$ à partir des données. Puis, on fitte la tendance variance en fonction de l'expression moyenne. Enfin, on shrink les estimations grace à la fonction fittée.
+
+
 ## Test d'expression différentielle
 
+### EdgeR : 
 L'hypothèse nulle est que la proportion des transcrits $i$ est a même dans les deux conditions, $p_{i,A} = p_{i,B}$.
 On crée un test exact (test permettant de conclure à la significativité tout en fixant l'erreur de première espèce)
 
@@ -103,4 +111,9 @@ la statistique de test est la somme des counts pour les deux conditions : $K_{iA
 
 Test exact analogue au test exact de Fischer, adapté aux données surdispersées.
 On modélise la somme des NB des deux conditions, qui suit aussi une NB. On calcule ensuite la probabilité d'avoir cette somme sous l'hypothèse nulle, c'est à dire l'égalité des proportions.
+
+
+### DESeq2 : test de Wald.
+
+On teste le logFoldChange estimé divisé par son écart type, contre une distribution normale centrée réduite.
 
