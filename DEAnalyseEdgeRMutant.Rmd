@@ -116,7 +116,7 @@ DEgenes = rownames(best$table)
 plotBCV(y)
 
 plotMD(et)
-abline(h=c(-1, 1), col="blue")
+#abline(h=c(-1, 1), col="blue")
 abline(h=c(0), col="red")
 summary(decideTests(et))
 ```

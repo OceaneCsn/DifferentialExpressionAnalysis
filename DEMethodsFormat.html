@@ -10,7 +10,7 @@
 
 <meta name="author" content="Océane Cassan" />
 
-<meta name="date" content="2019-10-29" />
+<meta name="date" content="2019-11-05" />
 
 <title>Méthodes statistiques pour l’analyse d’expression différentielle RNA-Seq</title>
 <!-- Material Design fonts -->
@@ -852,7 +852,7 @@ $(document).ready(function () {
         <div id="header">
     <h1 class="title">Méthodes statistiques pour l’analyse d’expression différentielle RNA-Seq</h1>
                 <h4 class="author">Océane Cassan</h4>
-                <h4 class="date">2019-10-29</h4>
+                <h4 class="date">2019-11-05</h4>
         </div>
     </div>
 </div>
@@ -911,18 +911,28 @@ $(document).ready(function () {
 <div id="estimer-la-variance" class="section level2">
 <h2>Estimer la variance</h2>
 <p>On modélise les données comme suit : <span class="math inline">\(reads_{i,j} \sim NB(N_jp_i = \mu_{i,j}, \phi_i)\)</span> avec <span class="math inline">\(N_j\)</span> la taille de l’échantillon <span class="math inline">\(j\)</span>, <span class="math inline">\(p_i\)</span> la vraie proportion de reads issus du gène <span class="math inline">\(i\)</span>, et <span class="math inline">\(\phi_i\)</span> la dispersion. Si <span class="math inline">\(\phi_i = 0\)</span> on retrouve une loi de Poisson.</p>
-<p>Suivant la formule des variances de mixture distributions, la variance du modèle est <span class="math inline">\(var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2\)</span>. En divisant par <span class="math inline">\(\mu_{i,j}^2\)</span> on obtient <span class="math inline">\(CV^2(reads_{i,j}) = \frac{1}{\mu_{i,j}}+\phi_i = technical CV^2 + biological CV^2\)</span>.</p>
+<p>Suivant la formule des variances de mixture distributions, la variance du modèle est <span class="math inline">\(var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2\)</span>. Elle est composée du “shot noise” et de la variance brute. En divisant par <span class="math inline">\(\mu_{i,j}^2\)</span> on obtient <span class="math inline">\(CV^2(reads_{i,j}) = \frac{1}{\mu_{i,j}}+\phi_i = technical CV^2 + biological CV^2\)</span>.</p>
 <p>Avec CV le coefficient de variation, mesure de la variabilité relative (ratio sd moyenne). Le CV technique diminue avec l’augmentation du nombre de reads, tandis que le CV biologique reste constant. C’est ce paramètre biologique <span class="math inline">\(\phi_i\)</span> qui est à estimer avant de pouvoir tester statistiquement l’expression différentielle pour un gène.</p>
-<p>On peut utiliser l’ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d’expression pour un gène. Pour cela, on peu considérer qu’ils ont tous un ratio moyenne-variance similaire. C’est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. C’est pour cela qu’on utilise en fait une loi quasi négative binomiale, dont la variance s’écrit <span class="math inline">\(var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)\)</span>.</p>
+<p>On peut utiliser l’ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d’expression pour un gène. Pour cela, on peu considérer qu’ils ont tous un ratio moyenne-variance similaire. C’est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. Une fonction de la moyenne d’expression est donc utilisée pour estimer la variance, ce qui permet de pooler tous les gènes d’expression similaire et de pallier au manque de valeurs.</p>
+<p>C’est pour cela qu’on utilise en fait une loi quasi négative binomiale, dont la variance s’écrit <span class="math inline">\(var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)\)</span>.</p>
 <p>Explication assez claire pour edge R: <a href="https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf" class="uri">https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf</a></p>
 <p>On estime les variances par maximum de vraissemblance, conditionnellement au nombre total de reads par gène. Une méthode Bayésienne empririque est utilisée pour converger vers une valeur de dispersion. On fitte une tendance dépendante de la moyenne aux estimées de QL.</p>
+<div id="deseq2" class="section level3">
+<h3>DESeq2 :</h3>
+<p>Inférence bayesienne, avec un prior sur <span class="math inline">\(\phi_i\)</span> log normal centré autour d’une fonction à priori de l’expression moyenne du gène. Méthode bayesiennes empiriques par maximum de likelihood pour estimer <span class="math inline">\(\phi_i\)</span> à partir des données. Puis, on fitte la tendance variance en fonction de l’expression moyenne. Enfin, on shrink les estimations grace à la fonction fittée.</p>
+</div>
 </div>
 <div id="test-dexpression-différentielle" class="section level2">
 <h2>Test d’expression différentielle</h2>
-<p>L’hypothèse nulle est que la proportion des transcrits <span class="math inline">\(i\)</span> est a même dans les deux conditions, <span class="math inline">\(p_{i,A} = p_{i,B}\)</span>. On ajuste par rapport aux quantiles pour pouvoir avoir un test exact (test permettant de conclure à la significativité tout en fixant l’erreur de première espèce)</p>
-<p>Test exact analogue au test exact de Fischer, adapté aux données surdispersées. On modélise la somme des NB des deux conditions, qui suit aussi une NB. On calcule ensuite la probabilité d’avoir cette somme sous l’hypothèse nulle, c’est à dire l’égalité des proportions.</p>
 <div id="edger" class="section level3">
 <h3>EdgeR :</h3>
+<p>L’hypothèse nulle est que la proportion des transcrits <span class="math inline">\(i\)</span> est a même dans les deux conditions, <span class="math inline">\(p_{i,A} = p_{i,B}\)</span>. On crée un test exact (test permettant de conclure à la significativité tout en fixant l’erreur de première espèce)</p>
+<p>la statistique de test est la somme des counts pour les deux conditions : <span class="math inline">\(K_{iA} + K_{iB} = \Sigma_{j \in A} reads_{i,j} + \Sigma_{j \in B} reads_{i,j}\)</span>. A partir du modèle d’erreur, on peut calculer la probabiliter d’obtenir l’énènement <span class="math inline">\(K_{iA} = a\)</span> et <span class="math inline">\(K_{iB} = b\)</span>, <span class="math inline">\(p(a,b)\)</span>.</p>
+<p>Test exact analogue au test exact de Fischer, adapté aux données surdispersées. On modélise la somme des NB des deux conditions, qui suit aussi une NB. On calcule ensuite la probabilité d’avoir cette somme sous l’hypothèse nulle, c’est à dire l’égalité des proportions.</p>
+</div>
+<div id="deseq2-test-de-wald." class="section level3">
+<h3>DESeq2 : test de Wald.</h3>
+<p>On teste le logFoldChange estimé divisé par son écart type, contre une distribution normale centrée réduite.</p>
 </div>
 </div>
 </div>

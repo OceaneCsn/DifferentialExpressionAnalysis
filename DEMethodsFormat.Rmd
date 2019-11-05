@@ -41,12 +41,15 @@ On distingue plusieur types de normalisation.
 
 Plus de détails : https://hbctraining.github.io/DGE_workshop/lessons/02_DGE_count_normalization.html) 
 
-Les deux méthodes présentées reposent sur le fait que les gènes sont en majorité non differentiellement exprimés. On calcule un sizeFactor propre à chaque échantillon.
+Petit cours : https://www.youtube.com/watch?v=5tGCBW3_0IA
 
+Les deux méthodes présentées reposent sur le fait que les gènes sont en majorité non differentiellement exprimés, et que les DE sont équitablement répartis entre up et down? On calcule un sizeFactor propre à chaque échantillon.
+
+Ne jamais modifier les données avant de les donner à un package qui normalise.
 
 ## Méthode de DESeq2 : la médiane des ratios
 
-On veit ici corriger la profondeur de séquençage. On divise chaque count par la moyenne géométrique des counts de son gène parmis tous les échantillons (Comme si on créait un nouvel échantillon de pseudo-référence avec cette moyenne. **Le size factor d'un échantillon est la médiane de ces ratios pour tous les gènes**. Pour normaliser, on divise tous les counts d'un échantillon par son sizeFactor. (On ne considère pas dans la médiane les gènes ayant une moyenne géométrique de 0).
+On veit ici corriger la profondeur de séquençage. On divise chaque count par la moyenne géométrique des counts de son gène parmis tous les échantillons (Comme si on créait un nouvel échantillon de pseudo-référence avec cette moyenne.) **Le size factor d'un échantillon est la médiane de ces ratios pour tous les gènes**. Pour normaliser, on divise tous les counts d'un échantillon par son sizeFactor. (On ne considère pas dans la médiane les gènes ayant une moyenne géométrique de 0).
 
 Si $i$ représente un gène et $j$ un échantillon :
 
@@ -69,6 +72,8 @@ On élimine en amont les gènes avec des counts nuls.
 
 # Expression différentielle
 
+La dispersion est le coefficient de variation au carré. Différent de la variance. CV le coefficient de variation : mesure de la variabilité relative (ratio écart type sur moyenne).
+
 La loi de **Poisson** est utilisée pour modéliser des données de comptage.
 Cependant, la variance biologique induite par les différents réplicats provoque une surdispersion de ce modèle de Poisson. Une loi **négative binomiale** est donc utilisée.
 
@@ -79,17 +84,17 @@ On modélise les données comme suit : $reads_{i,j} \sim  NB(N_jp_i = \mu_{i,j},
 
 Suivant la formule des variances de mixture distributions, la variance du modèle est $var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2$. Elle est composée du "shot noise" et de la variance brute. En divisant par $\mu_{i,j}^2$ on obtient $CV^2(reads_{i,j}) = \frac{1}{\mu_{i,j}}+\phi_i =  technical CV^2 +  biological CV^2$. 
 
-Avec CV le coefficient de variation, mesure de la variabilité relative (ratio sd moyenne). Le CV technique diminue avec l'augmentation du nombre de reads, tandis que le CV biologique reste constant. C'est ce paramètre biologique $\phi_i$ qui est à estimer avant de pouvoir tester statistiquement l'expression différentielle pour un gène.
+Le CV technique diminue avec l'augmentation du nombre de reads, tandis que le CV biologique reste constant. C'est ce paramètre biologique $\phi_i$ qui est à estimer avant de pouvoir tester statistiquement l'expression différentielle pour un gène.
 
 
-On peut utiliser l'ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d'expression pour un gène. Pour cela, on peu considérer qu'ils ont tous un ratio moyenne-variance similaire. C'est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. Une fonction de la moyenne d'expression est donc utilisée pour estimer la variance, ce qui permet de pooler tous les gènes d'expression similaire et de pallier au manque de valeurs.
+On peut utiliser l'ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d'expression pour un gène. Pour cela, on peu considérer une fonction de la moyenne d'expression est donc utilisée pour estimer la variance, ce qui permet de pooler tous les gènes d'expression similaire et de pallier au manque de valeurs.
 
 C'est pour cela qu'on utilise en fait une loi quasi négative binomiale, dont la variance s'écrit $var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)$.
 
 Explication assez claire pour edge R: https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
 
 
-On estime les variances par maximum de vraissemblance, conditionnellement au nombre total de reads par gène.
+On estime les variances par maximum de vraissemblance, conditionnellement au nombre total de reads par gène (qCML methods), et GLM.
 Une méthode Bayésienne empririque est utilisée pour converger vers une valeur de dispersion.
 On fitte une tendance dépendante de la moyenne aux estimées de QL.
 
@@ -115,5 +120,6 @@ On modélise la somme des NB des deux conditions, qui suit aussi une NB. On calc
 
 ### DESeq2 : test de Wald.
 
-On teste le logFoldChange estimé divisé par son écart type, contre une distribution normale centrée réduite.
+Les logFoldChange sont estimés estimés par méthodes bayesiennes, et sont centrés en 0.
+On teste le logFoldChange estimé divisé par son écart type, donne une statistique z testée contre une distribution normale centrée réduite.
 

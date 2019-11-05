@@ -15,7 +15,7 @@ library(rmdformats, warn.conflicts = F, quietly = T)
 
 ## Global options
 options(max.print="75")
-opts_chunk$set(cache=TRUE,
+opts_chunk$set(cache=FALSE,
                prompt=FALSE,
                tidy=TRUE,
                comment=NA,
@@ -36,7 +36,8 @@ On loade la matrice de reads par échantillon et par gènes obtenue par htseq-co
 On supprime les dernières lignes qui correspondent aux reads non identifiés comme des gènes ou comme ambigus.
 
 ```{r data}
-data = read.table("quantif_all.txt", h=T)
+data = read.table("quantif_all_unstranded.txt", h=F)
+colnames(data) <- c("Gene", "WT.K1", "WT.K2","WT.N1","WT.N2","WT.K3","WT.N3")
 rownames(data)=data$Gene
 data = dplyr::select(data, -c("Gene"))
 genes = which(!(grepl("__", rownames(data))))
@@ -84,17 +85,14 @@ Biological Variance is the coefficient of variation with which the (unknown) tru
 
 The dispersion estimates can be viewed in a BCV plot:
 
-
-Estimation compliquée à documenter
 ```{r fit}
 y <- estimateDisp(y)
 et <- exactTest(y)
 best = topTags(et, n = 2000)
 best = best[best$table$FDR < 0.05,]
+genes <- rownames(cpm(y, normalized.lib.sizes=TRUE))
 DEgenes = rownames(best$table)
 plotBCV(y)
-
-
 
 plotMD(et)
 abline(h=c(-1, 1), col="blue")
