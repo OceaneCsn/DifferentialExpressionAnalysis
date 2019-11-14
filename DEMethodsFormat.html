@@ -10,7 +10,7 @@
 
 <meta name="author" content="Océane Cassan" />
 
-<meta name="date" content="2019-11-05" />
+<meta name="date" content="2019-11-13" />
 
 <title>Méthodes statistiques pour l’analyse d’expression différentielle RNA-Seq</title>
 <!-- Material Design fonts -->
@@ -852,7 +852,7 @@ $(document).ready(function () {
         <div id="header">
     <h1 class="title">Méthodes statistiques pour l’analyse d’expression différentielle RNA-Seq</h1>
                 <h4 class="author">Océane Cassan</h4>
-                <h4 class="date">2019-11-05</h4>
+                <h4 class="date">2019-11-13</h4>
         </div>
     </div>
 </div>
@@ -888,10 +888,12 @@ $(document).ready(function () {
 <li><p><strong>Normalisation intra-sample</strong> : Corrige suivant la longueur des gènes, suivant le GC-content… Cela est utile dans une optique de comparaison entre différents gènes, dans un même échantillon. Pour l’expression différentielle, comme on compare un même gène entre différentes conditions, les effets intra-sample n’ont pas ou très peu d’effets. Ex : RPKM, La somme des counts normalisés en RPKM ne sera pas la même pour deux échantillons, les rendant non comparables.</p></li>
 </ul>
 <p>Plus de détails : <a href="https://hbctraining.github.io/DGE_workshop/lessons/02_DGE_count_normalization.html" class="uri">https://hbctraining.github.io/DGE_workshop/lessons/02_DGE_count_normalization.html</a>)</p>
-<p>Les deux méthodes présentées reposent sur le fait que les gènes sont en majorité non differentiellement exprimés. On calcule un sizeFactor propre à chaque échantillon.</p>
+<p>Petit cours : <a href="https://www.youtube.com/watch?v=5tGCBW3_0IA" class="uri">https://www.youtube.com/watch?v=5tGCBW3_0IA</a></p>
+<p>Les deux méthodes présentées reposent sur le fait que les gènes sont en majorité non differentiellement exprimés, et que les DE sont équitablement répartis entre up et down? On calcule un sizeFactor propre à chaque échantillon.</p>
+<p>Ne jamais modifier les données avant de les donner à un package qui normalise.</p>
 <div id="méthode-de-deseq2-la-médiane-des-ratios" class="section level2">
 <h2>Méthode de DESeq2 : la médiane des ratios</h2>
-<p>On veit ici corriger la profondeur de séquençage. On divise chaque count par la moyenne géométrique des counts de son gène parmis tous les échantillons (Comme si on créait un nouvel échantillon de pseudo-référence avec cette moyenne. <strong>Le size factor d’un échantillon est la médiane de ces ratios pour tous les gènes</strong>. Pour normaliser, on divise tous les counts d’un échantillon par son sizeFactor. (On ne considère pas dans la médiane les gènes ayant une moyenne géométrique de 0).</p>
+<p>On veit ici corriger la profondeur de séquençage. On divise chaque count par la moyenne géométrique des counts de son gène parmis tous les échantillons (Comme si on créait un nouvel échantillon de pseudo-référence avec cette moyenne.) <strong>Le size factor d’un échantillon est la médiane de ces ratios pour tous les gènes</strong>. Pour normaliser, on divise tous les counts d’un échantillon par son sizeFactor. (On ne considère pas dans la médiane les gènes ayant une moyenne géométrique de 0).</p>
 <p>Si <span class="math inline">\(i\)</span> représente un gène et <span class="math inline">\(j\)</span> un échantillon :</p>
 <p><span class="math inline">\(sizeFactor_J = \mathrm{mediane}(\frac{read_{i,J}}{\big(\Pi_{j = 1}^{N_{samples}}read_{i,j}\big)^{1/N_{samples} }})\)</span></p>
 </div>
@@ -907,16 +909,17 @@ $(document).ready(function () {
 </div>
 <div id="expression-différentielle" class="section level1">
 <h1>Expression différentielle</h1>
+<p>La dispersion est le coefficient de variation au carré. Différent de la variance. CV le coefficient de variation : mesure de la variabilité relative (ratio écart type sur moyenne).</p>
 <p>La loi de <strong>Poisson</strong> est utilisée pour modéliser des données de comptage. Cependant, la variance biologique induite par les différents réplicats provoque une surdispersion de ce modèle de Poisson. Une loi <strong>négative binomiale</strong> est donc utilisée.</p>
 <div id="estimer-la-variance" class="section level2">
 <h2>Estimer la variance</h2>
 <p>On modélise les données comme suit : <span class="math inline">\(reads_{i,j} \sim NB(N_jp_i = \mu_{i,j}, \phi_i)\)</span> avec <span class="math inline">\(N_j\)</span> la taille de l’échantillon <span class="math inline">\(j\)</span>, <span class="math inline">\(p_i\)</span> la vraie proportion de reads issus du gène <span class="math inline">\(i\)</span>, et <span class="math inline">\(\phi_i\)</span> la dispersion. Si <span class="math inline">\(\phi_i = 0\)</span> on retrouve une loi de Poisson.</p>
 <p>Suivant la formule des variances de mixture distributions, la variance du modèle est <span class="math inline">\(var(reads_{i,j}) = \mu_{i,j}+\phi_i\mu_{i,j}^2\)</span>. Elle est composée du “shot noise” et de la variance brute. En divisant par <span class="math inline">\(\mu_{i,j}^2\)</span> on obtient <span class="math inline">\(CV^2(reads_{i,j}) = \frac{1}{\mu_{i,j}}+\phi_i = technical CV^2 + biological CV^2\)</span>.</p>
-<p>Avec CV le coefficient de variation, mesure de la variabilité relative (ratio sd moyenne). Le CV technique diminue avec l’augmentation du nombre de reads, tandis que le CV biologique reste constant. C’est ce paramètre biologique <span class="math inline">\(\phi_i\)</span> qui est à estimer avant de pouvoir tester statistiquement l’expression différentielle pour un gène.</p>
-<p>On peut utiliser l’ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d’expression pour un gène. Pour cela, on peu considérer qu’ils ont tous un ratio moyenne-variance similaire. C’est cependant trop naif, et il faut des fonctions de variance spécifiques à chaque gène. Une fonction de la moyenne d’expression est donc utilisée pour estimer la variance, ce qui permet de pooler tous les gènes d’expression similaire et de pallier au manque de valeurs.</p>
+<p>Le CV technique diminue avec l’augmentation du nombre de reads, tandis que le CV biologique reste constant. C’est ce paramètre biologique <span class="math inline">\(\phi_i\)</span> qui est à estimer avant de pouvoir tester statistiquement l’expression différentielle pour un gène.</p>
+<p>On peut utiliser l’ensemble des gènes pour estimer cette variance, étant donné la nature parallèle du RNA Seq. Cela est très utile étant donné le peu de valeurs d’expression pour un gène. Pour cela, on peu considérer une fonction de la moyenne d’expression est donc utilisée pour estimer la variance, ce qui permet de pooler tous les gènes d’expression similaire et de pallier au manque de valeurs.</p>
 <p>C’est pour cela qu’on utilise en fait une loi quasi négative binomiale, dont la variance s’écrit <span class="math inline">\(var(reads_{i,j}) = \sigma_i^2(\mu_{i,j}+\phi_i\mu_{i,j}^2)\)</span>.</p>
 <p>Explication assez claire pour edge R: <a href="https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf" class="uri">https://bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf</a></p>
-<p>On estime les variances par maximum de vraissemblance, conditionnellement au nombre total de reads par gène. Une méthode Bayésienne empririque est utilisée pour converger vers une valeur de dispersion. On fitte une tendance dépendante de la moyenne aux estimées de QL.</p>
+<p>On estime les variances par maximum de vraissemblance, conditionnellement au nombre total de reads par gène (qCML methods), et GLM. Une méthode Bayésienne empririque est utilisée pour converger vers une valeur de dispersion. On fitte une tendance dépendante de la moyenne aux estimées de QL.</p>
 <div id="deseq2" class="section level3">
 <h3>DESeq2 :</h3>
 <p>Inférence bayesienne, avec un prior sur <span class="math inline">\(\phi_i\)</span> log normal centré autour d’une fonction à priori de l’expression moyenne du gène. Méthode bayesiennes empiriques par maximum de likelihood pour estimer <span class="math inline">\(\phi_i\)</span> à partir des données. Puis, on fitte la tendance variance en fonction de l’expression moyenne. Enfin, on shrink les estimations grace à la fonction fittée.</p>
@@ -932,7 +935,7 @@ $(document).ready(function () {
 </div>
 <div id="deseq2-test-de-wald." class="section level3">
 <h3>DESeq2 : test de Wald.</h3>
-<p>On teste le logFoldChange estimé divisé par son écart type, contre une distribution normale centrée réduite.</p>
+<p>Les logFoldChange sont estimés estimés par méthodes bayesiennes, et sont centrés en 0. On teste le logFoldChange estimé divisé par son écart type, donne une statistique z testée contre une distribution normale centrée réduite.</p>
 </div>
 </div>
 </div>

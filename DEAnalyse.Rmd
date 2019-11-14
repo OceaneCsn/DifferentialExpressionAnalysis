@@ -15,7 +15,7 @@ library(rmdformats, warn.conflicts = F, quietly = T)
 
 ## Global options
 options(max.print="75")
-opts_chunk$set(cache=TRUE,
+opts_chunk$set(cache=FALSE,
                prompt=FALSE,
                tidy=TRUE,
                comment=NA,
@@ -39,7 +39,8 @@ On loade la matrice de reads par échantillon et par gènes obtenue par htseq-co
 On supprime les dernières lignes qui correspondent aux reads non identifiés comme des gènes ou comme ambigus.
 
 ```{r data}
-data = read.table("quantif_all.txt", h=T)
+data = read.table("quantif_all_unstranded.txt", h=F)
+colnames(data) <- c("Gene", "WT.K1", "WT.K2","WT.N1","WT.N2","WT.K3","WT.N3")
 rownames(data)=data$Gene
 data = dplyr::select(data, -c("Gene"))
 genes = which(!(grepl("__", rownames(data))))
@@ -163,17 +164,12 @@ mat = counts(dds, normalized=TRUE)[DEgenes,]
 heatmap(mat, main = "Significatifs")
 
 DEgenes_pval = rownames(res[res$padj < thr,])
-DEgenes_upreg = rownames(res[res$log2FoldChange > 1,])
-DEgenes = intersect(DEgenes_pval, DEgenes_upreg)
+DEgenes_lfc = rownames(res[abs(res$log2FoldChange) > 1,])
+DEgenes = intersect(DEgenes_pval, DEgenes_lfc)
 mat = counts(dds, normalized=TRUE)[DEgenes,]
 heatmap(mat, main = "Juste les significatifs uprégulés")
 ```
 
-```{r DEGenes}
-thr = 0.05
-res = na.omit(res)
-DEgenes = rownames(res[res$padj < thr,])
-```
 On s'intéresse maintenant à la liste de gènes sélectionnés et à leur ontologie.
 
 ```{r mart}
@@ -186,6 +182,13 @@ r = results[DEgenes,]; kable(r, caption = "Genes DE et leur GO")
 library(stringi)
 DEGenesNames = stri_remove_empty(r$external_gene_name, na_empty = FALSE)
 save(file = "DEGenesDESeqAll.RData", DEGenesNames)
+
+library(data.table)
+kable(r[r$description %like% "Calcium" | r$description %like% "calcium", ])
+kable(r[r$external_gene_name %like% "NRT", ])
+kable(r[r$external_gene_name %like% "NLP", ])
+kable(r[r$external_gene_name %like% "NI", ])
+kable(r[r$description %like% "Cytokinin", ])
 ```
 
 

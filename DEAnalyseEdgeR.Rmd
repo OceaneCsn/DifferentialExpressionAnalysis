@@ -90,6 +90,8 @@ y <- estimateDisp(y)
 et <- exactTest(y)
 best = topTags(et, n = 2000)
 best = best[best$table$FDR < 0.05,]
+best = best[abs(best$table$logFC) > 1,]
+
 genes <- rownames(cpm(y, normalized.lib.sizes=TRUE))
 DEgenes = rownames(best$table)
 plotBCV(y)
@@ -128,4 +130,14 @@ DEGenesNames = stri_remove_empty(r$external_gene_name, na_empty = FALSE)
 save(file = "DEGenesEdgeRAll.RData", DEGenesNames)
 ```
 
+Recherches 
 
+```{r, echo = F}
+library(data.table)
+kable(r[r$description %like% "Calcium" | r$description %like% "calcium", ])
+kable(r[r$external_gene_name %like% "NRT", ])
+kable(r[r$external_gene_name %like% "NLP", ])
+kable(r[r$external_gene_name %like% "NI", ])
+kable(r[r$description %like% "Cytokinin", ])
+kable(r[r$external_gene_name %like% "HHO", ])
+```

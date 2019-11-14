@@ -9,7 +9,6 @@ output:
         after_body: footer.html
 ---
 
-
 ```{r knitr_init, echo=FALSE, cache=FALSE}
 library(knitr)
 library(rmdformats)
@@ -25,7 +24,6 @@ opts_chunk$set(echo=FALSE,
                warning=FALSE)
 opts_knit$set(width=75)
 ```
-
 
 
 Il est d'abord nécessaire de filtrer les gènes dont l'expression sommée sur toutes les conditions ne dépasse pas une certaine valeur (environ 10) pour ne pas fausser les tests statistiques, et car ils ne représentent pas de réel intêret biologique.

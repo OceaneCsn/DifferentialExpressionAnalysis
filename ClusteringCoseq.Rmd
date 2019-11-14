@@ -1,0 +1,97 @@
+---
+title: "Première cinétique CO2 ionome"
+author: "Océane Cassan"
+date: "10/25/2019"
+output: 
+  rmdformats::material:
+    highlight: kate
+    includes:
+        after_body: footer.html
+---
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+library(knitr, warn.conflicts = F, quietly = T)
+library(rmdformats, warn.conflicts = F, quietly = T)
+
+## Global options
+options(max.print="75")
+opts_chunk$set(cache=FALSE,
+               prompt=FALSE,
+               tidy=TRUE,
+               comment=NA,
+               message=FALSE,
+               warning=FALSE)
+opts_knit$set(width=75)
+setwd("~/Documents/RNADifferentialAnalysis/DifferentialExpressionAnalysis/")
+suppressMessages(library(ggplot2))
+suppressMessages(library(coseq))
+suppressMessages(library(DESeq2))
+```
+
+Premier test de clustering basique avec des données simulées :
+
+```{r knitr_init, echo=FALSE, cache=FALSE}
+set.seed(12345)
+countmat <- matrix(runif(300*4, min=0, max=500), nrow=300, ncol=3)
+countmat <- countmat[which(rowSums(countmat) > 0),]
+conds <- rep(c("A","B","C","D"), each=2)
+
+run_arcsin <- coseq(object=countmat, K=2:5, iter=5,model="Normal", norm = "TMM"); run_arcsin
+plot(run_arcsin)
+summary(run_arcsin)
+```
+
+
+Avec mes données : 
+
+
+On donne en entrée la matrice de counts, et éventuellement une liste de gènes DE pour ne pas à avoir tous les gènes à traiter pour le clustering. 
+On normalise avec la méthode de DESeq2 ou EdgeR entre autres, beaucoup sont disponibles.
+On choisi le modèle, Normal ou Poisson, et le nombre de clusters à tester.
+```{r data}
+data = read.table("quantif_all_unstranded.txt", h=F)
+colnames(data) <- c("Gene", "WT.K1", "WT.K2","WT.N1","WT.N2","WT.K3","WT.N3")
+rownames(data)=data$Gene
+data = dplyr::select(data, -c("Gene"))
+genes = which(!(grepl("__", rownames(data))))
+data = data[genes,]
+data = data[, sort(colnames(data))]
+#kable(head(data))
+```
+
+On procède à l'analyse d'expression différentielle pour obtenir les gènes d'intêret.
+
+```{r DEgenes}
+design = data.frame(
+   row.names = colnames( data ),
+   condition = c( "untreated", "untreated", "untreated",
+      "treated", "treated", "treated"),
+   libType = rep("single-end", 6))
+
+dds <- DESeq2::DESeqDataSetFromMatrix(countData = data,
+                              colData = design,
+                              design = ~ condition)
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep,]
+dds$condition <- relevel(dds$condition, ref = "untreated")
+dds <- DESeq2::DESeq(dds)
+res <- na.omit(results(dds))
+resOrdered <- res[order(res$padj),]
+sum(res$padj < 0.05, na.rm=TRUE)
+plotMA(res, ylim=c(-5,5))
+DEgenes <- rownames(res[res$padj < 0.05,])
+```
+
+```{r coseq}
+run_cluster <- coseq(object=data[DEgenes,], K=2:10, model = "Normal")
+plot(run_cluster)
+summary(run_cluster)
+clusters_per_genes <- clusters(run_cluster)
+```
+On cherche maintenant à comprendre d'un point de vue ontologie ces clusters de gène là : 
+```{r coseq}
+nb_clust = max(clusters_per_genes)
+for (i in seq(1:nb_clust)){
+  
+}
+```

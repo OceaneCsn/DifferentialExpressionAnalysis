@@ -15,7 +15,7 @@ library(rmdformats, warn.conflicts = F, quietly = T)
 
 ## Global options
 options(max.print="75")
-opts_chunk$set(cache=TRUE,
+opts_chunk$set(cache=FALSE,
                prompt=FALSE,
                tidy=TRUE,
                comment=NA,
@@ -45,15 +45,16 @@ On loade la matrice de reads par échantillon et par gènes obtenue par htseq-co
 On supprime les dernières lignes qui correspondent aux reads non identifiés comme des gènes ou comme ambigus.
 
 ```{r data}
-data = read.table("quantif_all.txt", h=T)
+
+data = read.table("quantif_all_unstranded.txt", h=F)
+colnames(data) <- c("Gene", "WT.K1", "WT.K2","WT.N1","WT.N2","WT.K3","WT.N3")
 rownames(data)=data$Gene
 data = dplyr::select(data, -c("Gene", "WT.K1", "WT.K2", "WT.K3"))
 genes = which(!(grepl("__", rownames(data))))
 data = data[genes,]
 data = data[, sort(colnames(data))]
 
-
-data_mutant = read.table("quantif_mutants.txt", h=F)
+data_mutant = read.table("quantif_mutants_unstranded.txt", h=F)
 colnames(data_mutant) <- c("Gene", "icpk.N1", "icpk.N2", "icpk.N3")
 rownames(data_mutant)=data_mutant$Gene
 data_mutant = dplyr::select(data_mutant, -c("Gene"))
@@ -110,7 +111,7 @@ Estimation compliquée à documenter
 ```{r fit}
 y <- estimateDisp(y)
 et <- exactTest(y)
-best = topTags(et, n = 2000)
+best = topTags(et, n = 3000)
 best = best[best$table$FDR < 0.05,]
 DEgenes = rownames(best$table)
 plotBCV(y)
@@ -121,7 +122,7 @@ abline(h=c(0), col="red")
 summary(decideTests(et))
 ```
 
-On a 434+369 gènes différentiellement exprimés avec un seuil pour la pvalue ajustée de 5%. 
+On a beauoup de gènes différentiellement exprimés avec un seuil pour la pvalue ajustée de 5%. 
 
 The functionplotMDS draws a multi-dimensional scaling plot of the RNA samples in whichdistances correspond to leading log-fold-changes between each pair of RNA samples. Theleading log-fold-change is the average (root-mean-square) of the largest absolute log-fold-changes between each pair of sample
 
@@ -140,18 +141,20 @@ results <- getBM( filters = "ensembl_transcript_id", attributes = c("ensembl_tra
 rownames(results) = results$ensembl_transcript_id
 r = results[DEgenes,]
 r$pval = best$table$PValue
-kable(r, caption = "Genes DE et leur GO")
+#kable(r, caption = "Genes DE et leur GO")
 
 library(stringi)
 DEGenesNames = stri_remove_empty(r$external_gene_name, na_empty = FALSE)
 save(file = "DEGenesEdgeRMutant.RData", DEGenesNames)
 ```
 
-Sur ces 803 gènes DE, 30 contiennent le mot "kinase" dans leur description, 8 le mot calcium.
+Sur ces 1800 gènes gènes DE, 172 contiennent le mot "kinase" dans leur description, 33 le mot calcium, plusieurs NLP, 10 liés aux nitrates.
 
 ```{r ontshort}
 library(data.table)
 kable(r[r$description %like% "kinase", ])
 kable(r[r$description %like% "Calcium" | r$description %like% "calcium", ])
 kable(r[r$external_gene_name %like% "NLP", ])
+kable(r[r$description %like% "nitrate" | r$external_gene_name %like% "NI", ])
+kable(r[r$external_gene_name %like% "HHO", ])
 ```
