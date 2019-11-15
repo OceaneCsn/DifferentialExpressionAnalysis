@@ -1,5 +1,5 @@
 ---
-title: "Première cinétique CO2 ionome"
+title: "Clustering de gènes"
 author: "Océane Cassan"
 date: "10/25/2019"
 output: 
@@ -26,28 +26,16 @@ setwd("~/Documents/RNADifferentialAnalysis/DifferentialExpressionAnalysis/")
 suppressMessages(library(ggplot2))
 suppressMessages(library(coseq))
 suppressMessages(library(DESeq2))
+suppressMessages(library(HTSCluster))
+suppressMessages(library(dplyr, warn.conflicts = F, quietly = T))
+suppressMessages(library(biomartr, warn.conflicts = F, quietly = T))
+suppressMessages(library(biomaRt, warn.conflicts = F, quietly = T))
 ```
 
-Premier test de clustering basique avec des données simulées :
+On cherche à faire du clustering de gènes, sur ceux qui ont été détectés comme différentiellement exprimés lors du traitement au KNO3 des plantes WT.
 
-```{r knitr_init, echo=FALSE, cache=FALSE}
-set.seed(12345)
-countmat <- matrix(runif(300*4, min=0, max=500), nrow=300, ncol=3)
-countmat <- countmat[which(rowSums(countmat) > 0),]
-conds <- rep(c("A","B","C","D"), each=2)
+# Gènes différentiellement exprimés
 
-run_arcsin <- coseq(object=countmat, K=2:5, iter=5,model="Normal", norm = "TMM"); run_arcsin
-plot(run_arcsin)
-summary(run_arcsin)
-```
-
-
-Avec mes données : 
-
-
-On donne en entrée la matrice de counts, et éventuellement une liste de gènes DE pour ne pas à avoir tous les gènes à traiter pour le clustering. 
-On normalise avec la méthode de DESeq2 ou EdgeR entre autres, beaucoup sont disponibles.
-On choisi le modèle, Normal ou Poisson, et le nombre de clusters à tester.
 ```{r data}
 data = read.table("quantif_all_unstranded.txt", h=F)
 colnames(data) <- c("Gene", "WT.K1", "WT.K2","WT.N1","WT.N2","WT.K3","WT.N3")
@@ -59,9 +47,10 @@ data = data[, sort(colnames(data))]
 #kable(head(data))
 ```
 
+
 On procède à l'analyse d'expression différentielle pour obtenir les gènes d'intêret.
 
-```{r DEgenes}
+```{r DEgenes, cache = T}
 design = data.frame(
    row.names = colnames( data ),
    condition = c( "untreated", "untreated", "untreated",
@@ -82,16 +71,70 @@ plotMA(res, ylim=c(-5,5))
 DEgenes <- rownames(res[res$padj < 0.05,])
 ```
 
+# Mixture Models theory 
+
+## Estimation des clusters
+
+Manière probabiliste de faire du soft clustering. (Contraireement au hard clustering, on appartient à tous les clusters mais avec une certitude plus ou moins grande). 
+
+
+Chaque cluster correspond à une distribution multivarée, dont on veut estimer les paramètres (Moyenne et écart type dans le cas Gaussien, Moyenne dans le cas de Poisson...).
+
+
+Cette estimation se fait par des aglorithmes EM : Expectation Maximisation.
+Si on connait les paramètres de chaque cluster, on peut calculer les probabilités de chaque point d'appartenir à chaque cluster, en utilisant la formule de Bayes. 
+
+Problème : si on avait les clusters, on pourrait obtenir leurs paramètres, et si on avait les paramètres, on pourrait obtenir les clusters. 
+
+Fonctionnement EM (semblable à k-means avec des distributions à paramétrer plutôt que la position d'un centroide): 
+- On suppose des paramètres randoms puis 
+- On calcule la probabilité de chaque point relativement à chaque cluster 
+- On ajuste les paramètres des clusters pour mieux coller aux points qui leur ont été assignés
+- On réitère jusqu'à la convergence 
+
+## 
+
+On calcule la vraissemblance des données sous l'hypothèse qu'elle est générée par un mixture model.
+
+$L = \Sigma_{i = 1}^n log\Sigma_{k = 1}^K P(x_i|k)P(k)$
+
+Cependant, avec cette formule, on aurait autant de clusters que de points pour optimiser la vraissemblance.
+
+On pénalise donc la vraissemblance par rapport au nombre de clusters.
+
+On peut aussi utiiser le BIC ou l'AIC pour rester parcimonieux dans le nombre de clusters.
+
+# Clustering avec Coseq
+
+On donne en entrée la matrice de counts, et éventuellement une liste de gènes DE pour ne pas à avoir tous les gènes à traiter pour le clustering. 
+On normalise avec la méthode de DESeq2 ou EdgeR entre autres, beaucoup sont disponibles.
+On choisi le modèle, Normal ou Poisson, et le nombre de clusters à tester.
+
 ```{r coseq}
-run_cluster <- coseq(object=data[DEgenes,], K=2:10, model = "Normal")
-plot(run_cluster)
-summary(run_cluster)
-clusters_per_genes <- clusters(run_cluster)
+#run_cluster <- coseq(object=data[DEgenes,], K=2:10, model = "Normal")
+#plot(run_cluster)
+
+conds <- c(rep("K", 3), rep("N",3))
+run_pois <- coseq(data[DEgenes,], conds=conds, K=2:10, model="Poisson", transformation = "none")
+plot(run_pois)
+
+summary(run_pois)
+clusters_per_genes <- clusters(run_pois)
 ```
-On cherche maintenant à comprendre d'un point de vue ontologie ces clusters de gène là : 
-```{r coseq}
+
+On cherche maintenant à comprendre d'un point de vue ontologie ces clusters de gènes : 
+
+```{r GO}
+
 nb_clust = max(clusters_per_genes)
-for (i in seq(1:nb_clust)){
-  
+for (clust in seq(1:nb_clust)){
+  print(clust)
+  genes = names(clusters_per_genes[which(clusters_per_genes == clust)])
+  print(genes)
+  mart = useMart(biomart="plants_mart",host="plants.ensembl.org", dataset = "athaliana_eg_gene")
+  results <- getBM( filters = "ensembl_transcript_id", attributes = c("ensembl_transcript_id", "description", "external_gene_name"),
+             values = genes, mart = mart)
+  rownames(results) = results$ensembl_transcript_id
+  r = results[genes,]; print(kable(r, caption = "Genes DE et leur GO"))
 }
 ```
